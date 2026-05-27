@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: selfrag_agent_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      # - GEMINI_API_KEY=your_key_here # Add your API keys below or in an .env file
+    env_file:
+      - .env
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: selfrag_agent_frontend
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    environment:
+      - API_URL=http://backend:8000/api/v1/diagnose
+      - HEALTH_URL=http://backend:8000/health
