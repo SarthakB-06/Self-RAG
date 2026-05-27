@@ -9,7 +9,7 @@ from dataclasses import dataclass, asdict
 
 import numpy as np
 import faiss
-from sentence_transformers import SentenceTransformer
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from src.config import Config, logger
 
 
@@ -62,7 +62,7 @@ class VectorStore:
     FAISS-based vector store for semantic search.
 
     Features:
-    - Sentence Transformers embeddings (all-MiniLM-L6-v2)
+    - Gemini API embeddings (models/embedding-001)
     - FAISS IndexFlatIP for cosine similarity
     - Persistent storage (save/load index)
     - Hybrid search (vector + keyword)
@@ -71,14 +71,14 @@ class VectorStore:
 
     def __init__(
         self,
-        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+        model_name: str = "models/embedding-001",
         store_path: str = ".cache/vector_db"
     ):
         """
         Initialize vector store.
 
         Args:
-            model_name: HuggingFace model for embeddings
+            model_name: Google GenAI model for embeddings
             index_path: Path to save/load FAISS index
         """
         self.model_name = model_name
@@ -88,9 +88,9 @@ class VectorStore:
         self.metadata_path = self.store_path / "metadata.pkl"
 
         # Load embedding model
-        logger.info(f"Loading embedding model: {model_name}")
-        self.model = SentenceTransformer(model_name)
-        self.embedding_dim = self.model.get_sentence_embedding_dimension()
+        logger.info(f"Loading Gemini API embedding model: {model_name}")
+        self.model = GoogleGenerativeAIEmbeddings(model=model_name)
+        self.embedding_dim = 768
 
         # FAISS index (using Inner Product for cosine similarity)
         self.index: Optional[faiss.Index] = None
@@ -233,19 +233,19 @@ class VectorStore:
         Returns:
             Numpy array of shape (len(texts), embedding_dim)
         """
-        logger.info(f"Generating embeddings for {len(texts)} documents...")
+        logger.info(f"Generating embeddings for {len(texts)} documents via Gemini API...")
 
-        # Normalize embeddings for cosine similarity
-        embeddings = self.model.encode(
-            texts,
-            batch_size=32,
-            show_progress_bar=True,
-            normalize_embeddings=True  # Critical for cosine similarity
-        )
+        embeddings_list = self.model.embed_documents(texts)
+        
+        # Convert to numpy and normalize for FAISS Inner Product Search
+        embeddings = np.array(embeddings_list, dtype=np.float32)
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-10
+        normalized_embeddings = embeddings / norms
 
         self.total_embeddings_generated += len(texts)
 
-        return embeddings
+        return normalized_embeddings
 
     def _build_faiss_index(self, embeddings: np.ndarray) -> None:
         """
@@ -290,17 +290,20 @@ class VectorStore:
         self.total_searches += 1
         start_time = time.time()
 
-        # Generate query embedding
-        query_embedding = self.model.encode(
-            [query],
-            normalize_embeddings=True
-        )[0]
+        # Generate query embedding via Gemini
+        q_emb = self.model.embed_query(query)
+        q_emb_np = np.array([q_emb], dtype=np.float32)
+        
+        # Normalize
+        q_norm = np.linalg.norm(q_emb_np, axis=1, keepdims=True)
+        q_norm[q_norm == 0] = 1e-10
+        q_emb_normalized = q_emb_np / q_norm
 
         # Search in FAISS
         # Note: FAISS returns (distances, indices)
         # With IndexFlatIP, distance = cosine similarity (higher is better)
         similarities, indices = self.index.search(
-            query_embedding.reshape(1, -1).astype('float32'),
+            q_emb_normalized,
             # Retrieve more for filtering
             k=min(top_k * 2, len(self.documents))
         )
