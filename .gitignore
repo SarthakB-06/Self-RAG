@@ -3,3 +3,4 @@ enterprise_runbooks/
 .cache/
 venv/
 __pycache__/
+logs/
