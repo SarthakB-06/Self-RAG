@@ -17,10 +17,15 @@ HEALTH_URL = os.getenv("HEALTH_URL", "http://localhost:8000/health")
 
 
 def check_backend():
-    try:
-        response = requests.get(HEALTH_URL, timeout=2)
-        return response.status_code == 200
-    except requests.exceptions.RequestException:
+    with st.spinner("Waking up FastAPI backend (Render free-tier cold start may take up to 50 seconds)..."):
+        for attempt in range(3):
+            try:
+                # Increased timeout to 60s
+                response = requests.get(HEALTH_URL, timeout=60)
+                if response.status_code == 200:
+                    return True
+            except requests.exceptions.RequestException:
+                time.sleep(2) # brief pause before retry
         return False
 
 
