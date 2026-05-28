@@ -20,12 +20,12 @@ def check_backend():
     with st.spinner("Waking up FastAPI backend (Render free-tier cold start may take up to 50 seconds)..."):
         for attempt in range(3):
             try:
-                # Increased timeout to 60s
+                # Increased timeout to 60s to account for waking up dead API
                 response = requests.get(HEALTH_URL, timeout=60)
                 if response.status_code == 200:
                     return True
             except requests.exceptions.RequestException:
-                time.sleep(2) # brief pause before retry
+                time.sleep(2)
         return False
 
 

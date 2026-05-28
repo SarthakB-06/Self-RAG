@@ -4,6 +4,7 @@ Fetches relevant runbooks using vector search.
 """
 
 import time
+from pathlib import Path
 from typing import Dict, Any
 from src.state import AgentState
 from src.config import Config, logger
@@ -19,7 +20,14 @@ def get_vector_store_instance() -> VectorStore:
         logger.info("Initializing direct VectorStore instance for retrieval...")
         _vector_store_instance = VectorStore(
             store_path=Config.VECTOR_DB_PATH)
-        _vector_store_instance.load_index()
+        
+        # If running on Render, the index won't exist because .cache is in .gitignore.
+        # We must build it dynamically.
+        if not _vector_store_instance.load_index():
+            logger.info("Index not found. Building FAISS index dynamically via Gemini API...")
+            runbook_path = Path(Config.RUNBOOK_DIR)
+            _vector_store_instance.build_index(runbook_path)
+            
         logger.info("Direct VectorStore instance loaded.")
     return _vector_store_instance
 
